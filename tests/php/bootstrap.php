@@ -10,6 +10,6 @@ if (is_file($serverBootstrap)) {
 	require_once $serverBootstrap;
 }
 
-require_once __DIR__ . '/../../vendor/autoload.php';
+require_once __DIR__ . '/../../composer/autoload.php';
 
 \OC_App::loadApp('singleuseshare');

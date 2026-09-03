@@ -3,6 +3,9 @@
     "description": "Filigrane à la volée pour les partages Nextcloud",
     "type": "project",
     "license": "AGPL-3.0-or-later",
+    "config": {
+        "vendor-dir": "composer"
+    },
     "require": {
         "php": ">=8.1",
         "setasign/fpdi": "^2.6",

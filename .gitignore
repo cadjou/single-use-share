@@ -1,4 +1,4 @@
-vendor/
+composer/
 node_modules/
 js/
 build/

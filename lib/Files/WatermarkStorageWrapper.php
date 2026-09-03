@@ -30,6 +30,21 @@ use OCP\Share\IShare;
  * and must not be used.
  */
 class WatermarkStorageWrapper extends Wrapper {
+	/**
+	 * Watermarked content depends on runtime values (visitor IP, timestamp),
+	 * so it can't be cached across requests - but within a single request,
+	 * Sabre reads the size via filesize()/stat() *before* reading the bytes
+	 * via fopen(). Without this, the announced Content-Length is the
+	 * original file's size while the actual stream is the (larger)
+	 * watermarked one, truncating every download. Memoizing per path for
+	 * the lifetime of this instance (one request) means the size check and
+	 * the actual read reuse the same computed content instead of
+	 * watermarking the file twice.
+	 *
+	 * @var array<string, string|false> false = not watermarked, passthrough
+	 */
+	private array $watermarkedContentCache = [];
+
 	public function __construct(
 		array $parameters,
 		private WatermarkConfigMapper $configMapper,
@@ -43,32 +58,14 @@ class WatermarkStorageWrapper extends Wrapper {
 	 * @return resource|false
 	 */
 	public function fopen(string $path, string $mode) {
-		$stream = parent::fopen($path, $mode);
-		if ($stream === false || !str_contains($mode, 'r')) {
-			return $stream;
+		if (!str_contains($mode, 'r')) {
+			return parent::fopen($path, $mode);
 		}
 
-		$extension = strtolower((string)pathinfo($path, PATHINFO_EXTENSION));
-		if (!$this->watermarkService->isSupportedExtension($extension)) {
-			return $stream;
+		$watermarked = $this->getWatermarkedContent($path);
+		if ($watermarked === false) {
+			return parent::fopen($path, $mode);
 		}
-
-		$config = $this->resolveConfigForPath();
-		if ($config === null || !$config->getEnabled()) {
-			return $stream;
-		}
-
-		$content = stream_get_contents($stream);
-		fclose($stream);
-		if ($content === false) {
-			return false;
-		}
-
-		$watermarked = $this->watermarkService->applyWatermark($content, $extension, $config, [
-			'timestamp' => time(),
-			'ip' => $this->request->getRemoteAddress(),
-			'filename' => basename($path),
-		]);
 
 		$memoryStream = fopen('php://temp', 'r+b');
 		if ($memoryStream === false) {
@@ -84,16 +81,81 @@ class WatermarkStorageWrapper extends Wrapper {
 	 * The base Wrapper delegates file_get_contents() straight to the wrapped
 	 * storage instead of going through fopen(), which would silently bypass
 	 * watermarking for any caller using this method (some preview providers
-	 * do). Route it through fopen() explicitly so both paths are covered.
+	 * do).
 	 */
 	public function file_get_contents(string $path): string|false {
-		$stream = $this->fopen($path, 'r');
+		$watermarked = $this->getWatermarkedContent($path);
+		if ($watermarked !== false) {
+			return $watermarked;
+		}
+		return parent::file_get_contents($path);
+	}
+
+	/**
+	 * Reports the watermarked size instead of the original file's, so the
+	 * HTTP Content-Length announced before the body is streamed matches
+	 * what fopen()/file_get_contents() will actually return.
+	 */
+	public function filesize(string $path): int|float|false {
+		$watermarked = $this->getWatermarkedContent($path);
+		if ($watermarked !== false) {
+			return strlen($watermarked);
+		}
+		return parent::filesize($path);
+	}
+
+	public function stat(string $path): array|false {
+		$stat = parent::stat($path);
+		if ($stat === false) {
+			return $stat;
+		}
+
+		$watermarked = $this->getWatermarkedContent($path);
+		if ($watermarked !== false) {
+			$stat['size'] = strlen($watermarked);
+		}
+
+		return $stat;
+	}
+
+	/**
+	 * @return string|false the watermarked bytes, or false if this path
+	 *   isn't watermarked (unsupported format, or no enabled config)
+	 */
+	private function getWatermarkedContent(string $path): string|false {
+		if (array_key_exists($path, $this->watermarkedContentCache)) {
+			return $this->watermarkedContentCache[$path];
+		}
+
+		return $this->watermarkedContentCache[$path] = $this->computeWatermarkedContent($path);
+	}
+
+	private function computeWatermarkedContent(string $path): string|false {
+		$extension = strtolower((string)pathinfo($path, PATHINFO_EXTENSION));
+		if (!$this->watermarkService->isSupportedExtension($extension)) {
+			return false;
+		}
+
+		$config = $this->resolveConfigForPath();
+		if ($config === null || !$config->getEnabled()) {
+			return false;
+		}
+
+		$stream = parent::fopen($path, 'r');
 		if ($stream === false) {
 			return false;
 		}
 		$content = stream_get_contents($stream);
 		fclose($stream);
-		return $content;
+		if ($content === false) {
+			return false;
+		}
+
+		return $this->watermarkService->applyWatermark($content, $extension, $config, [
+			'timestamp' => time(),
+			'ip' => $this->request->getRemoteAddress(),
+			'filename' => basename($path),
+		]);
 	}
 
 	private function resolveConfigForPath(): ?WatermarkConfig {
