@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>singleuseshare</id>
+    <name>SingleUseShare</name>
+    <summary>Ajoute un filigrane traçant aux fichiers PDF/images partagés</summary>
+    <description><![CDATA[
+Ajoute une option de filigrane sur les partages de fichiers ou de dossiers (publics ou internes).
+Le filigrane, appliqué à la volée au téléchargement et à la prévisualisation, contient un texte
+personnalisé et des champs dynamiques (date/heure, adresse IP, nom du fichier), afin de dissuader
+et de tracer la redistribution non autorisée d'un document.
+    ]]></description>
+    <version>0.1.0</version>
+    <licence>agpl</licence>
+    <author>Charles Arthur David</author>
+    <namespace>SingleUseShare</namespace>
+    <category>files</category>
+    <bugs>https://github.com/cadjou/singleuseshare/issues</bugs>
+    <dependencies>
+        <php min-version="8.1"/>
+        <nextcloud min-version="32" max-version="34"/>
+    </dependencies>
+    <background-jobs>
+    </background-jobs>
+</info>
