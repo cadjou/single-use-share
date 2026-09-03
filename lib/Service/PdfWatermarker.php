@@ -29,6 +29,13 @@ class PdfWatermarker {
 			$pdf = new Fpdi();
 			$pdf->setPrintHeader(false);
 			$pdf->setPrintFooter(false);
+			// The diagonal tiling loop below deliberately draws text at
+			// coordinates outside the page (negative, or beyond its height)
+			// so a rotated stamp still covers the corners. TCPDF's default
+			// SetAutoPageBreak(true) treats any such out-of-bounds Text()
+			// call as "start a new page", turning a 1-page source PDF into
+			// dozens of blank pages. Watermarking never needs page breaks.
+			$pdf->SetAutoPageBreak(false, 0);
 
 			$pageCount = $pdf->setSourceFile($tmpFile);
 
