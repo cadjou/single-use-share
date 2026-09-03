@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SingleUseShare\Service;
 
 use OCA\SingleUseShare\Db\WatermarkConfig;
+use Psr\Log\LoggerInterface;
 
 /**
  * Entry point used by the download/preview listeners: decides whether a file
@@ -18,6 +19,7 @@ class WatermarkService {
 		private ImageWatermarker $imageWatermarker,
 		private PdfWatermarker $pdfWatermarker,
 		private DynamicFieldResolver $dynamicFieldResolver,
+		private LoggerInterface $logger,
 	) {
 	}
 
@@ -45,12 +47,27 @@ class WatermarkService {
 
 		$style = WatermarkStyle::fromArray($config->getStyleArray());
 
-		if (in_array($extension, self::PDF_EXTENSIONS, true)) {
-			return $this->pdfWatermarker->watermark($content, $text, $style);
-		}
+		try {
+			if (in_array($extension, self::PDF_EXTENSIONS, true)) {
+				return $this->pdfWatermarker->watermark($content, $text, $style);
+			}
 
-		if (in_array($extension, $this->imageWatermarker->getSupportedExtensions(), true)) {
-			return $this->imageWatermarker->watermark($content, $text, $style);
+			if (in_array($extension, $this->imageWatermarker->getSupportedExtensions(), true)) {
+				return $this->imageWatermarker->watermark($content, $text, $style);
+			}
+		} catch (\Throwable $e) {
+			// Some real-world files can't be watermarked - e.g. FPDI's free
+			// parser rejects PDFs using compression techniques it doesn't
+			// support (this is exactly what Nextcloud's own bundled sample
+			// PDF, "Nextcloud Manual.pdf", triggers). Serving a corrupted
+			// half-processed file instead of a clear original is far worse
+			// than silently skipping the watermark, so fall back to the
+			// untouched content and only log the failure server-side.
+			$this->logger->warning('SingleUseShare: watermarking failed, serving the original file unwatermarked', [
+				'app' => 'singleuseshare',
+				'exception' => $e,
+				'extension' => $extension,
+			]);
 		}
 
 		return $content;

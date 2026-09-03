@@ -1,7 +1,6 @@
 <template>
 	<div class="singleuseshare-action">
-		<NcCheckboxRadioSwitch type="switch"
-			:model-value="enabled"
+		<NcCheckboxRadioSwitch :model-value="enabled"
 			@update:model-value="(value) => (enabled = value)">
 			{{ t('singleuseshare', 'Filigrane') }}
 		</NcCheckboxRadioSwitch>

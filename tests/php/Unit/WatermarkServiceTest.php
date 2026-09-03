@@ -11,6 +11,7 @@ use OCA\SingleUseShare\Service\PdfWatermarker;
 use OCA\SingleUseShare\Service\WatermarkService;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 
 class WatermarkServiceTest extends TestCase {
 	private ImageWatermarker&MockObject $imageWatermarker;
@@ -27,6 +28,7 @@ class WatermarkServiceTest extends TestCase {
 			$this->imageWatermarker,
 			$this->pdfWatermarker,
 			new DynamicFieldResolver(),
+			new NullLogger(),
 		);
 	}
 
@@ -81,6 +83,17 @@ class WatermarkServiceTest extends TestCase {
 		$this->imageWatermarker->expects($this->never())->method('watermark');
 
 		$result = $this->service->applyWatermark('original-bytes', 'docx', $this->configWithText('Confidentiel'), []);
+
+		$this->assertSame('original-bytes', $result);
+	}
+
+	public function testWatermarkerFailureFallsBackToOriginalContent(): void {
+		// Real-world PDFs the free FPDI parser can't handle (compression it
+		// doesn't support) must not corrupt the served file - fall back to
+		// the original instead of letting the exception propagate.
+		$this->pdfWatermarker->method('watermark')->willThrowException(new \RuntimeException('unsupported compression'));
+
+		$result = $this->service->applyWatermark('original-bytes', 'pdf', $this->configWithText('Confidentiel'), []);
 
 		$this->assertSame('original-bytes', $result);
 	}
