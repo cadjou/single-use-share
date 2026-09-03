@@ -4,16 +4,13 @@ declare(strict_types=1);
 
 namespace OCA\SingleUseShare\AppInfo;
 
-use OC\Files\Filesystem;
-use OCA\SingleUseShare\Db\WatermarkConfigMapper;
-use OCA\SingleUseShare\Files\WatermarkStorageWrapper;
-use OCA\SingleUseShare\Service\WatermarkService;
+use OCA\SingleUseShare\Files\StorageWrapperRegistrar;
+use OCA\SingleUseShare\Listener\BeforeSabrePubliclyLoadedListener;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
-use OCP\Files\Storage\IStorage;
-use OCP\IRequest;
+use OCP\BeforeSabrePubliclyLoadedEvent;
 use OCP\Util;
 
 class Application extends App implements IBootstrap {
@@ -24,6 +21,10 @@ class Application extends App implements IBootstrap {
 	}
 
 	public function register(IRegistrationContext $context): void {
+		// Anonymous public share downloads/previews: core mounts the share
+		// outside of the preSetup hook below, so this is the only way to
+		// get our wrapper into that mount's storage stack in time.
+		$context->registerEventListener(BeforeSabrePubliclyLoadedEvent::class, BeforeSabrePubliclyLoadedListener::class);
 	}
 
 	public function boot(IBootContext $context): void {
@@ -32,25 +33,15 @@ class Application extends App implements IBootstrap {
 		// directly risks running after a user's filesystem is already set
 		// up, in which case addStorageWrapper() silently skips storages that
 		// are already mounted (see OCA\Files_Lock\AppInfo\Application for
-		// the same pattern, confirmed against Nextcloud 34.0.3 core).
+		// the same pattern, confirmed against Nextcloud 34.0.3 core). This
+		// covers authenticated/internal access and previews triggered from
+		// a logged-in user's context; anonymous public access is covered by
+		// the BeforeSabrePubliclyLoadedEvent listener registered above.
 		Util::connectHook('OC_Filesystem', 'preSetup', $this, 'addStorageWrapper');
 	}
 
 	/** @internal only public because OC_Hook requires it to be callable */
 	public function addStorageWrapper(): void {
-		$container = $this->getContainer();
-
-		Filesystem::addStorageWrapper(
-			self::APP_ID,
-			function (string $mountPoint, IStorage $storage) use ($container) {
-				return new WatermarkStorageWrapper(
-					['storage' => $storage],
-					$container->get(WatermarkConfigMapper::class),
-					$container->get(WatermarkService::class),
-					$container->get(IRequest::class),
-				);
-			},
-			-10,
-		);
+		$this->getContainer()->get(StorageWrapperRegistrar::class)->register();
 	}
 }
