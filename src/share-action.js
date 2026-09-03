@@ -6,10 +6,42 @@ import WatermarkShareAction from './components/WatermarkShareAction.vue'
 const tagName = 'oca_singleuseshare-sharing_action'
 
 const webComponent = wrap(Vue, WatermarkShareAction)
-// Same Vue 2 / web-component-wrapper shadow DOM workaround as the rest of
-// the app - see files-sidebar.js for the reasoning.
-Object.defineProperty(webComponent.prototype, 'attachShadow', { value() { return this } })
-Object.defineProperty(webComponent.prototype, 'shadowRoot', { get() { return this } })
+
+/**
+ * @vue/web-component-wrapper (the Vue 2 custom-element bridge; Vue 3 apps
+ * like files_downloadlimit don't need this, they use Vue's own native
+ * defineCustomElement) posts a MutationObserver on the *light* DOM of the
+ * element to track slotted content, completely separate from the shadow
+ * root Vue actually renders into - that separation is the whole point of
+ * using a real shadow root.
+ *
+ * A previous version of this file faked `shadowRoot` as the element itself
+ * (`get shadowRoot() { return this }`) so @nextcloud/vue's globally
+ * injected CSS (in document.head, not scoped per shadow root) would still
+ * reach the component. That made Vue render its output into the very node
+ * the MutationObserver was watching for slot content: toggling the
+ * watermark switch made v-if insert ~15 nodes into that node, the observer
+ * fired, reassigned the wrapper's reactive slotChildren, which re-rendered
+ * the wrapper, which mutated the same node again - an infinite feedback
+ * loop that froze the tab. Confirmed by tracing
+ * node_modules/@vue/web-component-wrapper/dist/vue-wc-wrapper.js against a
+ * real reproduction (the browser hung solid on the very first click).
+ *
+ * Fix: use a real, isolated shadow root (don't override anything), and
+ * explicitly clone the page's <link>/<style> tags into it once per
+ * instance so @nextcloud/vue's component styles still apply.
+ */
+const realAttachShadow = HTMLElement.prototype.attachShadow
+Object.defineProperty(webComponent.prototype, 'attachShadow', {
+	value(init) {
+		const shadowRoot = realAttachShadow.call(this, init)
+		document.querySelectorAll('head link[rel="stylesheet"], head style').forEach((node) => {
+			shadowRoot.appendChild(node.cloneNode(true))
+		})
+		return shadowRoot
+	},
+})
+
 window.customElements.define(tagName, webComponent)
 
 registerSidebarAction({
