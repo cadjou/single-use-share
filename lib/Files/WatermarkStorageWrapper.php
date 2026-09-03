@@ -119,6 +119,35 @@ class WatermarkStorageWrapper extends Wrapper {
 	}
 
 	/**
+	 * Exposes the same per-request memoized computation used by
+	 * fopen()/filesize()/stat() to WatermarkDownloadPlugin, which needs it
+	 * to build a correct Content-Length for Sabre - see that class for why
+	 * IStorage::filesize() alone isn't enough for that specific response.
+	 */
+	public function getWatermarkedContentForDownload(string $path): string|false {
+		return $this->getWatermarkedContent($path);
+	}
+
+	/**
+	 * Finds this wrapper within a (possibly further-wrapped) storage chain,
+	 * regardless of where in the stack it ended up - same idiom as
+	 * findShare() below, applied to our own class instead of ISharedStorage.
+	 */
+	public static function findInstance(IStorage $storage): ?self {
+		while (true) {
+			if ($storage instanceof self) {
+				return $storage;
+			}
+
+			if (!$storage instanceof Wrapper) {
+				return null;
+			}
+
+			$storage = $storage->getWrapperStorage();
+		}
+	}
+
+	/**
 	 * @return string|false the watermarked bytes, or false if this path
 	 *   isn't watermarked (unsupported format, or no enabled config)
 	 */

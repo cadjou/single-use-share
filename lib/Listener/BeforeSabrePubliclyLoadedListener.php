@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SingleUseShare\Listener;
 
 use OCA\SingleUseShare\Files\StorageWrapperRegistrar;
+use OCA\SingleUseShare\Files\WatermarkDownloadPlugin;
 use OCP\BeforeSabrePubliclyLoadedEvent;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
@@ -23,6 +24,15 @@ class BeforeSabrePubliclyLoadedListener implements IEventListener {
 			return;
 		}
 
+		// Anonymous public access bypasses the OC_Filesystem/preSetup hook
+		// entirely (see StorageWrapperRegistrar's own doc comment), so both
+		// the storage wrapper and the Content-Length-fixing download
+		// plugin need to be registered here.
 		$this->registrar->register();
+
+		$server = $event->getServer();
+		if ($server !== null) {
+			$server->addPlugin(new WatermarkDownloadPlugin());
+		}
 	}
 }

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace OCA\SingleUseShare\AppInfo;
 
+use OCA\DAV\Events\SabrePluginAddEvent;
 use OCA\SingleUseShare\Files\StorageWrapperRegistrar;
 use OCA\SingleUseShare\Listener\BeforeSabrePubliclyLoadedListener;
+use OCA\SingleUseShare\Listener\SabrePluginAddListener;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -23,8 +25,16 @@ class Application extends App implements IBootstrap {
 	public function register(IRegistrationContext $context): void {
 		// Anonymous public share downloads/previews: core mounts the share
 		// outside of the preSetup hook below, so this is the only way to
-		// get our wrapper into that mount's storage stack in time.
+		// get our wrapper into that mount's storage stack in time. It also
+		// registers WatermarkDownloadPlugin, needed because Sabre's GET
+		// response size comes from a filecache snapshot that the storage
+		// wrapper alone can't reach (see WatermarkDownloadPlugin).
 		$context->registerEventListener(BeforeSabrePubliclyLoadedEvent::class, BeforeSabrePubliclyLoadedListener::class);
+		// Authenticated /remote.php/dav/ (internal shares): the storage
+		// wrapper is already covered by the preSetup hook, but the same
+		// Content-Length bug applies here too, so it still needs the
+		// download plugin.
+		$context->registerEventListener(SabrePluginAddEvent::class, SabrePluginAddListener::class);
 	}
 
 	public function boot(IBootContext $context): void {
