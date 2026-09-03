@@ -80,6 +80,22 @@ class WatermarkStorageWrapper extends Wrapper {
 		return $memoryStream;
 	}
 
+	/**
+	 * The base Wrapper delegates file_get_contents() straight to the wrapped
+	 * storage instead of going through fopen(), which would silently bypass
+	 * watermarking for any caller using this method (some preview providers
+	 * do). Route it through fopen() explicitly so both paths are covered.
+	 */
+	public function file_get_contents(string $path): string|false {
+		$stream = $this->fopen($path, 'r');
+		if ($stream === false) {
+			return false;
+		}
+		$content = stream_get_contents($stream);
+		fclose($stream);
+		return $content;
+	}
+
 	private function resolveConfigForPath(): ?WatermarkConfig {
 		$share = $this->findShare();
 		if ($share === null) {
