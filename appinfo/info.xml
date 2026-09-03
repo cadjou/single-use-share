@@ -10,7 +10,7 @@ Le filigrane, appliqué à la volée au téléchargement et à la prévisualisat
 personnalisé et des champs dynamiques (date/heure, adresse IP, nom du fichier), afin de dissuader
 et de tracer la redistribution non autorisée d'un document.
     ]]></description>
-    <version>0.2.1</version>
+    <version>0.2.2</version>
     <licence>agpl</licence>
     <author>Charles Arthur David</author>
     <namespace>SingleUseShare</namespace>

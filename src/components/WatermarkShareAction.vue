@@ -112,13 +112,32 @@ export default {
 		}
 	},
 
-	mounted() {
-		if (this.share?.id) {
-			this.fetchConfig(this.share.id)
-		}
-		if (typeof this.onSave === 'function') {
-			this.onSave(this.save)
-		}
+	watch: {
+		// node/share/onSave are plain properties set on the custom element
+		// from outside (SidebarTabExternalAction.vue's watchEffect), not
+		// necessarily populated yet by the time mounted() would normally
+		// fire - a mounted()-only registration risks a race where onSave
+		// arrives just after mount and our save() callback never gets
+		// registered, silently dropping every watermark config save with
+		// no error anywhere. Watching reactively (immediate: true covers
+		// the "already available at creation" case, same as mounted())
+		// handles both orderings.
+		share: {
+			immediate: true,
+			handler(share, previousShare) {
+				if (share?.id && share.id !== previousShare?.id) {
+					this.fetchConfig(share.id)
+				}
+			},
+		},
+		onSave: {
+			immediate: true,
+			handler(fn) {
+				if (typeof fn === 'function') {
+					fn(this.save)
+				}
+			},
+		},
 	},
 
 	methods: {
