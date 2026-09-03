@@ -14,6 +14,7 @@ use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\Files\Storage\IStorage;
 use OCP\IRequest;
+use OCP\Util;
 
 class Application extends App implements IBootstrap {
 	public const APP_ID = 'singleuseshare';
@@ -26,15 +27,27 @@ class Application extends App implements IBootstrap {
 	}
 
 	public function boot(IBootContext $context): void {
+		// Storage wrappers must be registered from within the
+		// 'OC_Filesystem'/'preSetup' hook, not directly in boot() - doing it
+		// directly risks running after a user's filesystem is already set
+		// up, in which case addStorageWrapper() silently skips storages that
+		// are already mounted (see OCA\Files_Lock\AppInfo\Application for
+		// the same pattern, confirmed against Nextcloud 34.0.3 core).
+		Util::connectHook('OC_Filesystem', 'preSetup', $this, 'addStorageWrapper');
+	}
+
+	/** @internal only public because OC_Hook requires it to be callable */
+	public function addStorageWrapper(): void {
+		$container = $this->getContainer();
+
 		Filesystem::addStorageWrapper(
 			self::APP_ID,
-			function (string $mountPoint, IStorage $storage) use ($context) {
-				$server = $context->getServerContainer();
+			function (string $mountPoint, IStorage $storage) use ($container) {
 				return new WatermarkStorageWrapper(
 					['storage' => $storage],
-					$server->get(WatermarkConfigMapper::class),
-					$server->get(WatermarkService::class),
-					$server->get(IRequest::class),
+					$container->get(WatermarkConfigMapper::class),
+					$container->get(WatermarkService::class),
+					$container->get(IRequest::class),
 				);
 			},
 			-10,
