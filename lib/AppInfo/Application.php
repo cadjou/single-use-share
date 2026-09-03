@@ -7,12 +7,14 @@ namespace OCA\SingleUseShare\AppInfo;
 use OCA\DAV\Events\SabrePluginAddEvent;
 use OCA\SingleUseShare\Files\StorageWrapperRegistrar;
 use OCA\SingleUseShare\Listener\BeforeSabrePubliclyLoadedListener;
+use OCA\SingleUseShare\Listener\LoadAdditionalScriptsListener;
 use OCA\SingleUseShare\Listener\SabrePluginAddListener;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\BeforeSabrePubliclyLoadedEvent;
+use OCP\Files\Events\LoadAdditionalScriptsEvent;
 use OCP\Util;
 
 class Application extends App implements IBootstrap {
@@ -35,6 +37,9 @@ class Application extends App implements IBootstrap {
 		// Content-Length bug applies here too, so it still needs the
 		// download plugin.
 		$context->registerEventListener(SabrePluginAddEvent::class, SabrePluginAddListener::class);
+		// Without this, nothing injects our built JS into the Files app
+		// page, so the "Filigrane" sidebar tab it registers never loads.
+		$context->registerEventListener(LoadAdditionalScriptsEvent::class, LoadAdditionalScriptsListener::class);
 	}
 
 	public function boot(IBootContext $context): void {
