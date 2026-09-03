@@ -1,1 +1,1 @@
-import './files-sidebar.js'
+import './share-action.js'
