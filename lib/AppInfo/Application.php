@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SingleUseShare\AppInfo;
 
 use OCA\DAV\Events\SabrePluginAddEvent;
+use OCA\Files\Event\LoadAdditionalScriptsEvent;
 use OCA\SingleUseShare\Files\StorageWrapperRegistrar;
 use OCA\SingleUseShare\Listener\BeforeSabrePubliclyLoadedListener;
 use OCA\SingleUseShare\Listener\LoadAdditionalScriptsListener;
@@ -14,7 +15,6 @@ use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\BeforeSabrePubliclyLoadedEvent;
-use OCP\Files\Events\LoadAdditionalScriptsEvent;
 use OCP\Util;
 
 class Application extends App implements IBootstrap {

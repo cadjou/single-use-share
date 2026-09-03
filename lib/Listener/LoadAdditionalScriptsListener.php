@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace OCA\SingleUseShare\Listener;
 
+use OCA\Files\Event\LoadAdditionalScriptsEvent;
 use OCA\SingleUseShare\AppInfo\Application;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
-use OCP\Files\Events\LoadAdditionalScriptsEvent;
 use OCP\Util;
 
 /**
