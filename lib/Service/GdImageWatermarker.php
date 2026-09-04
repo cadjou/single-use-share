@@ -117,7 +117,12 @@ class GdImageWatermarker implements ImageWatermarkerInterface {
 		$stampWidth = imagesx($stamp);
 		$stampHeight = imagesy($stamp);
 
-		if (!$style->isTiled() || !$style->isDiagonal()) {
+		// "Repeat" covers the whole image regardless of the chosen
+		// position - previously this only tiled for the diagonal position,
+		// silently ignoring the repeat setting for center/banner, which
+		// looked like a single misplaced stamp instead of the requested
+		// tiled coverage.
+		if (!$style->isTiled()) {
 			[$x, $y] = $this->positionFor($style->getPosition(), $canvasWidth, $canvasHeight, $stampWidth, $stampHeight);
 			imagecopy($canvas, $stamp, $x, $y, 0, 0, $stampWidth, $stampHeight);
 			return;

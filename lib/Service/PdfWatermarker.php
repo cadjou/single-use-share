@@ -7,18 +7,45 @@ namespace OCA\SingleUseShare\Service;
 use setasign\Fpdi\Tcpdf\Fpdi;
 
 /**
- * Watermarks PDF documents using FPDI + TCPDF, both pure PHP with no system
- * dependency, so this always works regardless of what's installed on the
- * server (unlike the Imagick-based image path).
+ * Watermarks PDF documents. Tries FPDI + TCPDF first (pure PHP, no system
+ * dependency, preserves the original vector content and file size) - but
+ * FPDI's free parser rejects some real-world PDFs (notably ones using
+ * compression techniques it doesn't support; Nextcloud's own bundled sample
+ * PDF triggers this). When that happens and Imagick is available with a PDF
+ * delegate (Ghostscript - confirmed present wherever this was tested), fall
+ * back to rasterizing each page through Imagick/Ghostscript, stamping it
+ * with the same image-watermarking logic used for JPG/PNG shares, and
+ * reassembling a new PDF from the watermarked pages. That fallback loses
+ * text selectability (the page becomes an image), but guarantees the
+ * watermark is actually applied instead of silently shipping the original.
  */
 class PdfWatermarker {
 	private const SUPPORTED_EXTENSIONS = ['pdf'];
+
+	/** Resolution used when a page has to be rasterized (fallback path only). */
+	private const FALLBACK_DPI = 150;
+
+	public function __construct(
+		private ImageProcessorFactory $processorFactory,
+	) {
+	}
 
 	public function getSupportedExtensions(): array {
 		return self::SUPPORTED_EXTENSIONS;
 	}
 
 	public function watermark(string $pdfContent, string $text, WatermarkStyle $style): string {
+		try {
+			return $this->watermarkWithFpdi($pdfContent, $text, $style);
+		} catch (\Throwable $e) {
+			if (!$this->processorFactory->isImagickAvailable()) {
+				throw $e;
+			}
+			return $this->watermarkByRasterizing($pdfContent, $text, $style);
+		}
+	}
+
+	private function watermarkWithFpdi(string $pdfContent, string $text, WatermarkStyle $style): string {
 		$tmpFile = tempnam(sys_get_temp_dir(), 'sus_pdf_');
 		if ($tmpFile === false) {
 			throw new \RuntimeException('Unable to create a temporary file for PDF watermarking');
@@ -54,6 +81,35 @@ class PdfWatermarker {
 			return is_string($output) ? $output : '';
 		} finally {
 			unlink($tmpFile);
+		}
+	}
+
+	private function watermarkByRasterizing(string $pdfContent, string $text, WatermarkStyle $style): string {
+		$source = new \Imagick();
+		try {
+			$source->setResolution(self::FALLBACK_DPI, self::FALLBACK_DPI);
+			$source->readImageBlob($pdfContent);
+
+			$imageWatermarker = new ImagickImageWatermarker();
+			$result = new \Imagick();
+
+			foreach ($source as $page) {
+				$page->setImageFormat('png');
+				$watermarkedBlob = $imageWatermarker->watermark($page->getImageBlob(), $text, $style);
+
+				$watermarkedPage = new \Imagick();
+				$watermarkedPage->readImageBlob($watermarkedBlob);
+				$result->addImage($watermarkedPage);
+				$watermarkedPage->clear();
+			}
+
+			$result->setImageFormat('pdf');
+			$output = $result->getImagesBlob();
+			$result->clear();
+
+			return $output;
+		} finally {
+			$source->clear();
 		}
 	}
 
