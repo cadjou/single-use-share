@@ -14,6 +14,9 @@ namespace OCA\SingleUseShare\Service;
 class GdImageWatermarker implements ImageWatermarkerInterface {
 	private const SUPPORTED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
 
+	/** The stamp (all lines, tiled repeat unit) must fit within this fraction of the image's smaller side. */
+	private const MAX_STAMP_RATIO = 0.85;
+
 	/** Common paths for a usable TTF font across the Linux distros Nextcloud typically runs on. */
 	private const CANDIDATE_FONT_PATHS = [
 		'/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
@@ -38,7 +41,7 @@ class GdImageWatermarker implements ImageWatermarkerInterface {
 		$width = imagesx($source);
 		$height = imagesy($source);
 
-		$stamp = $this->buildStamp($text, $width, $style);
+		$stamp = $this->buildStamp($text, $width, $height, $style);
 		imagealphablending($source, true);
 		$this->applyStamp($source, $stamp, $width, $height, $style);
 
@@ -62,7 +65,7 @@ class GdImageWatermarker implements ImageWatermarkerInterface {
 		return null;
 	}
 
-	private function buildStamp(string $text, int $baseWidth, WatermarkStyle $style): \GdImage {
+	private function buildStamp(string $text, int $baseWidth, int $baseHeight, WatermarkStyle $style): \GdImage {
 		$lines = explode("\n", $text);
 		$fontPath = $this->findFontPath();
 		$fontSize = max(10, (int)round($baseWidth / 22));
@@ -98,14 +101,48 @@ class GdImageWatermarker implements ImageWatermarkerInterface {
 		}
 
 		if (!$style->isDiagonal()) {
-			return $flat;
+			return $this->constrainToCanvas($flat, $baseWidth, $baseHeight);
 		}
 
 		$rotated = imagerotate($flat, 45, $transparent);
 		imagesavealpha($rotated, true);
 		imagedestroy($flat);
 
-		return $rotated;
+		return $this->constrainToCanvas($rotated, $baseWidth, $baseHeight);
+	}
+
+	/**
+	 * A multi-line watermark (custom text plus several dynamic fields) can
+	 * easily be wider or taller than a small image at the default font
+	 * size, overflowing the canvas - single-placement styles then get
+	 * clipped instead of visibly centered/banner-placed. Downscale the
+	 * whole rendered stamp (works the same way regardless of whether it
+	 * was drawn with a TTF font or GD's fixed-size bitmap font, which can't
+	 * be shrunk by changing a font-size parameter) to keep it within a safe
+	 * fraction of the image.
+	 */
+	private function constrainToCanvas(\GdImage $stamp, int $canvasWidth, int $canvasHeight): \GdImage {
+		$width = imagesx($stamp);
+		$height = imagesy($stamp);
+		$maxWidth = max(1, (int)round($canvasWidth * self::MAX_STAMP_RATIO));
+		$maxHeight = max(1, (int)round($canvasHeight * self::MAX_STAMP_RATIO));
+
+		$scale = min(1.0, $maxWidth / $width, $maxHeight / $height);
+		if ($scale >= 1.0) {
+			return $stamp;
+		}
+
+		$newWidth = max(1, (int)round($width * $scale));
+		$newHeight = max(1, (int)round($height * $scale));
+
+		$resized = imagecreatetruecolor($newWidth, $newHeight);
+		imagesavealpha($resized, true);
+		imagealphablending($resized, false);
+		imagefill($resized, 0, 0, imagecolorallocatealpha($resized, 0, 0, 0, 127));
+		imagecopyresampled($resized, $stamp, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+		imagedestroy($stamp);
+
+		return $resized;
 	}
 
 	private function ttfTextWidth(string $text, string $fontPath, int $fontSize): int {
@@ -139,11 +176,19 @@ class GdImageWatermarker implements ImageWatermarkerInterface {
 
 	/** @return array{0: int, 1: int} */
 	private function positionFor(string $position, int $canvasWidth, int $canvasHeight, int $stampWidth, int $stampHeight): array {
-		return match ($position) {
+		[$x, $y] = match ($position) {
 			WatermarkStyle::POSITION_BANNER_TOP => [(int)round(($canvasWidth - $stampWidth) / 2), 10],
 			WatermarkStyle::POSITION_BANNER_BOTTOM => [(int)round(($canvasWidth - $stampWidth) / 2), $canvasHeight - $stampHeight - 10],
 			default => [(int)round(($canvasWidth - $stampWidth) / 2), (int)round(($canvasHeight - $stampHeight) / 2)],
 		};
+
+		// Belt-and-suspenders: constrainToCanvas() should already keep the
+		// stamp within bounds, but never let it start off-canvas (which
+		// looked like a truncated, oddly-placed watermark).
+		return [
+			max(0, min($x, max(0, $canvasWidth - $stampWidth))),
+			max(0, min($y, max(0, $canvasHeight - $stampHeight))),
+		];
 	}
 
 	private function detectMime(string $content): string {
