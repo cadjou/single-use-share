@@ -36,7 +36,12 @@ class WatermarkService {
 		$extension = strtolower(ltrim($extension, '.'));
 
 		$text = $this->dynamicFieldResolver->buildWatermarkText(
-			$config->getCustomText(),
+			// custom_text is nullable with no SQL default - a share saved
+			// with the text left blank never marks the field "updated"
+			// (Entity's setter no-ops when the value matches the class
+			// default) and ends up NULL in the DB (see the migration that
+			// fixes the schema default; this stays as defence in depth).
+			$config->getCustomText() ?? '',
 			$config->getDynamicFieldsArray(),
 			$context,
 		);

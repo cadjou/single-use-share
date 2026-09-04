@@ -41,7 +41,13 @@ class WatermarkConfig extends Entity {
 	 * @return string[] enabled dynamic field keys, e.g. ['date_heure', 'ip']
 	 */
 	public function getDynamicFieldsArray(): array {
-		$decoded = json_decode($this->getDynamicFields(), true);
+		// The DB column can legitimately be NULL (nullable, no SQL-level
+		// default) even though the PHP property defaults to '[]' - Entity's
+		// setter is a no-op when the new value equals the current one, so
+		// setDynamicFields('[]') on a fresh entity never marks the field as
+		// updated and it's simply omitted from the INSERT. Hydrating from a
+		// DB row bypasses that optimization and sets the real (null) value.
+		$decoded = json_decode($this->getDynamicFields() ?? '[]', true);
 		return is_array($decoded) ? $decoded : [];
 	}
 
@@ -49,7 +55,7 @@ class WatermarkConfig extends Entity {
 	 * @return array{position?: string, opacity?: int, tiled?: bool}
 	 */
 	public function getStyleArray(): array {
-		$decoded = json_decode($this->getStyle(), true);
+		$decoded = json_decode($this->getStyle() ?? '{}', true);
 		return is_array($decoded) ? $decoded : [];
 	}
 }
